@@ -435,7 +435,7 @@ p {
   position: absolute;
   inset: 0;
   z-index: -3;
-  background: url("cover.png") center / cover no-repeat;
+  background: url("cover.jpg") center / cover no-repeat;
   animation: heroBreath 24s ease-in-out infinite alternate;
 }
 
@@ -1383,7 +1383,7 @@ p {
   }
 
   .hero-bg {
-    background-image: url("covermobile.png");
+    background-image: url("covermobile.jpg");
     background-size: cover;
     background-position: center;
     transform: none;
