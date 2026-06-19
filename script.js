@@ -48,7 +48,6 @@
 
 gsap.registerPlugin(ScrollTrigger);
 
-
 /* ─── ELEMENTS ───────────────────────────────────────────── */
 
 const bgMusic = document.getElementById("bgMusic");
@@ -72,11 +71,14 @@ const form = document.getElementById("rsvpForm");
 const successMessage = document.getElementById("successMessage");
 const declineMessage = document.getElementById("declineMessage");
 
-
 const countDays = document.getElementById("countDays");
 const countHours = document.getElementById("countHours");
 const countMinutes = document.getElementById("countMinutes");
 const countSeconds = document.getElementById("countSeconds");
+
+/* ─── GOOGLE SHEETS URL ──────────────────────────────────── */
+
+const GOOGLE_SCRIPT_URL = "https://script.google.com/macros/s/AKfycbyHnhXIuM6cHYND5cPKq85wXumEnGT_dkpxFHHIMWv92UsOxcwMIa8DfNrRlHGBhSzurg/exec";
 
 /* ─── STATE ──────────────────────────────────────────────── */
 
@@ -87,6 +89,7 @@ let ticking = false;
 let particles = [];
 let particlesActive = false;
 let resizeTimer;
+let attendanceStatus = "";
 
 const reduceMotion = window.matchMedia("(prefers-reduced-motion: reduce)").matches;
 const isMobile = window.matchMedia("(max-width: 768px)").matches;
@@ -127,8 +130,7 @@ function playMusic() {
       removeMusicUnlockListeners();
       return true;
     })
-    .catch((err) => {
-      /* Autoplay can be blocked by the browser until user interaction. */
+    .catch(() => {
       updateMusicButton();
       return false;
     });
@@ -150,12 +152,6 @@ function toggleMusic() {
     pauseMusic();
   }
 }
-
-/* 
-  მთავარი გამოსწორება:
-  მუსიკა არ ვრთავთ ძალით intro-ს დროს.
-  intro რომ დასრულდება, პირველივე scroll / wheel / touch / click-ზე ჩაირთვება.
-*/
 
 function tryPlayMusicAfterIntro() {
   if (!introFinished || !bgMusic || musicStarted) return;
@@ -410,8 +406,6 @@ function finishIntro() {
   });
 
   startParticles();
-
-  /* აქ აღარ ვრთავთ პირდაპირ playMusic(); */
   addMusicUnlockListeners();
 }
 
@@ -685,6 +679,7 @@ function fadeIn(el) {
 
 if (acceptInvite) {
   acceptInvite.addEventListener("click", () => {
+    attendanceStatus = "მოვდივარ";
     playMusic();
 
     fadeOut(rsvpStart, () => {
@@ -700,8 +695,35 @@ if (acceptInvite) {
 }
 
 if (declineInvite) {
-  declineInvite.addEventListener("click", () => {
+  declineInvite.addEventListener("click", async () => {
+    attendanceStatus = "ვერ მოვდივარ";
     playMusic();
+
+    if (declineInvite) {
+      declineInvite.disabled = true;
+      declineInvite.style.pointerEvents = "none";
+    }
+
+    try {
+      await fetch(GOOGLE_SCRIPT_URL, {
+        method: "POST",
+        mode: "no-cors",
+        headers: {
+          "Content-Type": "text/plain;charset=utf-8"
+        },
+        body: JSON.stringify({
+          attendance: "ვერ მოვდივარ",
+          fullName: "",
+          email: "",
+          phone: "",
+          additionalAdult: "",
+          childrenUnder12: "",
+          message: ""
+        })
+      });
+    } catch (error) {
+      console.warn("Decline RSVP could not be saved:", error);
+    }
 
     fadeOut(rsvpStart, () => {
       if (rsvpStart) rsvpStart.style.display = "none";
@@ -715,7 +737,7 @@ if (declineInvite) {
 }
 
 if (form) {
-  form.addEventListener("submit", (e) => {
+  form.addEventListener("submit", async (e) => {
     e.preventDefault();
 
     if (!form.checkValidity()) {
@@ -723,31 +745,63 @@ if (form) {
       return;
     }
 
-    const submitBtn = form.querySelector('.submit-btn');
-    if (submitBtn) submitBtn.disabled = true;
+    const submitBtn = form.querySelector(".submit-btn");
 
-    const nameInput = form.querySelector('input[name="fullName"], input[type="text"]');
-    const nameVal = nameInput ? nameInput.value.trim() : "";
-    const refSuffix = nameVal.slice(0, 4).toUpperCase().replace(/[^A-Zა-ჰ0-9]/g, "") || "GUEST";
-    const refCode = document.getElementById("refCode");
-
-    if (refCode) {
-      refCode.textContent = `JETOUR·${refSuffix}·2026`;
+    if (submitBtn) {
+      submitBtn.disabled = true;
+      submitBtn.style.pointerEvents = "none";
     }
 
-    fadeOut(form, () => {
-      form.classList.remove("active");
-      form.style.display = "none";
+    const formData = new FormData(form);
 
-      if (successMessage) {
-        successMessage.style.display = "block";
-        fadeIn(successMessage);
+    const data = {
+      attendance: attendanceStatus || "მოვდივარ",
+      fullName: formData.get("fullName") || "",
+      email: formData.get("email") || "",
+      phone: formData.get("phone") || "",
+      additionalAdult: formData.get("additionalAdult") || "",
+      childrenUnder12: formData.get("childrenUnder12") || "",
+      message: formData.get("message") || ""
+    };
+
+    try {
+      await fetch(GOOGLE_SCRIPT_URL, {
+        method: "POST",
+        mode: "no-cors",
+        headers: {
+          "Content-Type": "text/plain;charset=utf-8"
+        },
+        body: JSON.stringify(data)
+      });
+
+      const nameVal = data.fullName.trim();
+      const refSuffix = nameVal.slice(0, 4).toUpperCase().replace(/[^A-Zა-ჰ0-9]/g, "") || "GUEST";
+      const refCode = document.getElementById("refCode");
+
+      if (refCode) {
+        refCode.textContent = `JETOUR·${refSuffix}·2026`;
       }
-    });
+
+      fadeOut(form, () => {
+        form.classList.remove("active");
+        form.style.display = "none";
+
+        if (successMessage) {
+          successMessage.style.display = "block";
+          fadeIn(successMessage);
+        }
+      });
+
+    } catch (error) {
+      alert("დაფიქსირდა შეცდომა. გთხოვთ, სცადოთ თავიდან.");
+
+      if (submitBtn) {
+        submitBtn.disabled = false;
+        submitBtn.style.pointerEvents = "auto";
+      }
+    }
   });
 }
-
-
 
 /* ─── BUTTON MICRO-INTERACTIONS ──────────────────────────── */
 
